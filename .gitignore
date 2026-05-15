@@ -1,0 +1,18 @@
+# Build artifacts
+build/
+bin/
+obj/
+out/
+
+# IDE files
+.vscode/
+.vs/
+*.user
+*.suo
+
+# Compilers & OS
+*.exe
+*.pdb
+*.obj
+*.o
+*.log
