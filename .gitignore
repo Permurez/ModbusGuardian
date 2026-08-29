@@ -1,12 +1,15 @@
 # Build artifacts
 build/
+cmake-build-*/
 bin/
 obj/
 out/
+compile_commands.json
 
 # IDE files
 .vscode/
 .vs/
+.idea/
 *.user
 *.suo
 
@@ -16,3 +19,6 @@ out/
 *.obj
 *.o
 *.log
+
+# Python
+__pycache__/

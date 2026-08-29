@@ -1,14 +1,23 @@
-cmake_minimum_required(VERSION 3.10)
-project(ModbusGuardian)
+cmake_minimum_required(VERSION 3.20)
+project(modbus_guardian C CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_C_STANDARD 17)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(NPCAP_SDK "C:/npcap-sdk") 
+# Shared frame codec: pure C, no I/O
+add_library(mbframe STATIC src/mbframe.c)
+target_include_directories(mbframe PUBLIC include) 
+target_compile_options(mbframe PRIVATE -Wall -Wextra -Wpedantic -g)
 
-include_directories(${NPCAP_SDK}/Include)
+# Traffic generator / Modbus TCP client
+add_executable(mbgen src/mbgen.c)
+target_link_libraries(mbgen PRIVATE mbframe)
+target_compile_options(mbgen PRIVATE -Wall -Wextra -Wpedantic -g)
 
-link_directories(${NPCAP_SDK}/Lib/x64) 
-
-add_executable(ModbusGuardian src/main.cpp)
-
-target_link_libraries(ModbusGuardian wpcap Packet)
+# Passive sniffer / IDS
+add_executable(modbus-guardian src/main.cpp)
+target_link_libraries(modbus-guardian PRIVATE mbframe pcap)
+target_compile_options(modbus-guardian PRIVATE -Wall -Wextra -Wpedantic -g)
