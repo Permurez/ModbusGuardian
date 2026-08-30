@@ -22,3 +22,5 @@ compile_commands.json
 
 # Python
 __pycache__/
+.venv/
+venv/
