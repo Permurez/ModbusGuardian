@@ -5,6 +5,7 @@ bin/
 obj/
 out/
 compile_commands.json
+.cache/
 
 # IDE files
 .vscode/
