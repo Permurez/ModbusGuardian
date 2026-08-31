@@ -5,9 +5,30 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-
+#include <errno.h>
 #include "mbframe.h"
+//Read exactly 'need' bytes from fd into fub, looping until complete.
+//TCP is a byte stream so single recv() may return partial frame.
 
+static int recv_exact(int fd, uint8_t *buf, size_t need) {
+    size_t got = 0;
+    while (got < need) {
+        ssize_t n = recv(fd, buf + got, need - got, 0);
+        if (n == 0) {
+            fprintf(stderr, "connection closed mid-frame\n");
+            return -1;
+        }
+        if (n < 0) {
+            if (errno == EINTR) {
+                continue;//Interrupted by a signal, not a real error
+            }
+            perror("recv");
+            return -1;
+        }
+        got += (size_t)n;
+    }
+    return 0;
+}
 int main(void) {
 
     /* 1. Build a Modbus TCP "Read Holding Registers" request frame using mbframe. */
@@ -48,22 +69,34 @@ int main(void) {
     }
     /* 5. Receive the response into a buffer. */
     uint8_t resp[MB_MAX_ADU];
-    ssize_t n = recv(fd, resp, sizeof(resp), 0);
-    if ( n < 0 ) {
-        perror ("recv");
+
+    /* MBAP: tid(2) + proto(2) + len(2) — fixed size, read it first */
+    if (recv_exact(fd, resp, 6) < 0) {
         close(fd);
         return 1;
     }
-    if (n==0){
-        fprintf(stderr, "connection closed by peer\n");
+
+    uint16_t len = (uint16_t)(((uint16_t)resp[4] << 8) | resp[5]);
+
+    /* Length comes from the wire — never trust it */
+    if (len < 2 || len > MB_MAX_PDU) {
+        fprintf(stderr, "invalid MBAP length: %u\n", len);
         close(fd);
         return 1;
     }
+
+    if (recv_exact(fd, resp + 6, len) < 0) {
+        close(fd);
+        return 1;
+    }
+
+    size_t total = 6 + (size_t)len;
+
     /* 6. Hex dump the received bytes for inspection. */
-    for (ssize_t i = 0; i < n; i++) {
+    for (size_t i = 0; i < total; i++) {
         printf("%02X ", resp[i]);
     }
- printf("\n");
+    printf("\n");
     /* 7. Close the socket. */
     close(fd);
     return 0;
