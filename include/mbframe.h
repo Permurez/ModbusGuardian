@@ -25,6 +25,9 @@ extern "C" {
 #define MB_FC_WRITE_SINGLE_COIL     0x05
 #define MB_FC_WRITE_SINGLE_REG      0x06
 
+/* Set on the function code of a Modbus exception response. */
+#define MB_FC_ERROR_BIT 0x80
+
 /**
  * Build a Modbus TCP "Read Holding Registers" (FC 03) request frame.
  *
