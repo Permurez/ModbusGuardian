@@ -43,7 +43,7 @@ extern "C" {
  */
 int mb_build_read_holding(uint8_t *buf, size_t buflen, uint16_t tid,
                            uint8_t uid, uint16_t addr, uint16_t qty);
-
+int mb_build_read_coils(uint8_t *buf, size_t buflen, uint16_t tid,uint8_t uid, uint16_t addr, uint16_t qty);
 /**
  * Parse the MBAP header of a Modbus TCP response and extract key fields.
  *
