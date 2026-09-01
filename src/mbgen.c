@@ -97,6 +97,45 @@ int main(void) {
         printf("%02X ", resp[i]);
     }
     printf("\n");
+
+
+    req_len = mb_build_read_coils(req, sizeof(req), 2, 1, 0, 8);
+    if (req_len < 0) {
+        fprintf(stderr, "mb_build_read_coils failed\n");
+        close(fd);
+        return 1;
+    }
+
+    if (send(fd, req, (size_t)req_len, 0) < 0) {
+        perror("send");
+        close(fd);
+        return 1;
+    }
+
+    if (recv_exact(fd, resp, 6) < 0) {
+        close(fd);
+        return 1;
+    }
+
+    len = (uint16_t)(((uint16_t)resp[4] << 8) | resp[5]);
+
+    if (len < 2 || len > MB_MAX_PDU) {
+        fprintf(stderr, "invalid MBAP length: %u\n", len);
+        close(fd);
+        return 1;
+    }
+
+    if (recv_exact(fd, resp + 6, len) < 0) {
+        close(fd);
+        return 1;
+    }
+
+    total = 6 + (size_t)len;
+
+    for (size_t i = 0; i < total; i++) {
+        printf("%02X ", resp[i]);
+    }
+    printf("\n");
     /* 7. Close the socket. */
     close(fd);
     return 0;
