@@ -1,21 +1,24 @@
 #include "packet_parser.hpp"
 
-constexpr size_t ETHERNET_HEADER_LEN = 14;
-constexpr size_t SRC_MAC_OFFSET = 6;
-constexpr size_t ETHERTYPE_OFFSET = 12;
-constexpr uint16_t ETHERTYPE_IPV4 = 0x0800;
-//Combine two consecutive bytes into one big-endian 16-bit value
+// Combines two consecutive bytes into one big-endian 16-bit value.
 static uint16_t read_u16_be(const uint8_t* bytes) {
     return static_cast<uint16_t>((bytes[0] << 8) | bytes[1]);
 }
-    
+
+constexpr size_t ETHERNET_HEADER_LEN = 14;
+
 static bool is_too_short_for_ethernet(size_t caplen) {
     return caplen < ETHERNET_HEADER_LEN;
 }
 
+constexpr size_t ETHERTYPE_OFFSET = 12;
+constexpr uint16_t ETHERTYPE_IPV4 = 0x0800;
+
 static bool is_not_ipv4(const uint8_t* data) {
     return read_u16_be(data + ETHERTYPE_OFFSET) != ETHERTYPE_IPV4;
 }
+
+constexpr size_t SRC_MAC_OFFSET = 6;
 
 static bool parse_ethernet(const uint8_t* data, size_t caplen, PacketInfo& out) {
     if (is_too_short_for_ethernet(caplen)) return false;
@@ -24,6 +27,59 @@ static bool parse_ethernet(const uint8_t* data, size_t caplen, PacketInfo& out) 
     return true;
 }
 
+static uint8_t ipv4_version(const uint8_t* ip) {
+    return ip[0] >> 4;
+}
+
+static size_t ipv4_header_len(const uint8_t* ip) {
+    return (ip[0] & 0x0F) * 4;
+}
+
+constexpr uint8_t IP_VERSION_4 = 4;
+constexpr size_t MIN_IPV4_HEADER_LEN = 20;
+constexpr size_t IP_TOTAL_LEN_OFFSET = 2;
+// Returns true if the IPv4 header is malformed or does not fit in the captured bytes.
+static bool has_invalid_ipv4_header(const uint8_t* ip, size_t available) {
+    if (ipv4_version(ip) != IP_VERSION_4) return true;
+    const size_t header_len = ipv4_header_len(ip);
+    if (header_len < MIN_IPV4_HEADER_LEN || header_len > available) return true;
+    return read_u16_be(ip + IP_TOTAL_LEN_OFFSET) < header_len;
+}
+
+constexpr size_t IP_PROTOCOL_OFFSET = 9;
+constexpr uint8_t IP_PROTOCOL_TCP = 6;
+// Returns true if the IP protocol field is not TCP (6).
+static bool is_not_tcp(const uint8_t* ip) {
+    return ip[IP_PROTOCOL_OFFSET] != IP_PROTOCOL_TCP;
+}
+
+
+
+static uint32_t read_u32_be(const uint8_t* bytes) {
+    return (static_cast<uint32_t>(read_u16_be(bytes)) << 16) | read_u16_be(bytes + 2);
+}
+constexpr size_t IP_FRAGMENT_OFFSET = 6;
+constexpr uint16_t IP_FRAGMENT_MASK = 0x1FFF;
+// Returns true if this is a later fragment of a split packet.
+static bool is_later_fragment(const uint8_t* ip) {
+   return (read_u16_be(ip + IP_FRAGMENT_OFFSET) & IP_FRAGMENT_MASK) != 0;
+}
+
+
+
+constexpr size_t IP_SRC_OFFSET = 12;
+constexpr size_t IP_DST_OFFSET = 16;
+
+static bool parse_ipv4(const uint8_t* ip, size_t available, PacketInfo& out) {
+    if (available < MIN_IPV4_HEADER_LEN) return false;
+    if (has_invalid_ipv4_header(ip, available)) return false;
+    if (is_not_tcp(ip) || is_later_fragment(ip)) return false;
+    out.src_ip = read_u32_be(ip + IP_SRC_OFFSET);
+    out.dst_ip = read_u32_be(ip + IP_DST_OFFSET);
+    return true;
+}
+
 bool parse_packet(const uint8_t* data, size_t caplen, PacketInfo& out) {
-    return parse_ethernet(data, caplen, out);
+    return parse_ethernet(data, caplen, out)
+        && parse_ipv4(data + ETHERNET_HEADER_LEN, caplen - ETHERNET_HEADER_LEN, out);
 }
