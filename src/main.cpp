@@ -2,30 +2,81 @@
 #include <pcap.h>
 #include <vector>
 #include <string>
+#include <winsock2.h> // Potrzebne do ntohs
 
-// Rozbudowana procedura obsługi pakietów (callback)
+#include "AlertLogger.hpp"
+#include "ModbusHeader.hpp"
+
+// KONFIGURACJA REGUL IDS (Polityka bezpieczeństwa sieci)
+const uint8_t ALLOWED_UNIT_ID = 1; // Nasz prawowity sterownik ma ID = 1
+
 void packetHandler(u_char *userData, const struct pcap_pkthdr *pkthdr, const u_char *packet) {
-    // Odcinamy nagłówki sieciowe: Ethernet (14B) + IP (20B) + TCP (20B) = 54 bajty
-    // Używamy 'unsigned int', żeby dopasować typ do pkthdr->len i uniknąć warningów
-    unsigned int network_offset = 54;
+    auto* logger = reinterpret_cast<AlertLogger*>(userData);
+    unsigned int network_offset = 54; // Ethernet (14B) + IP (20B) + TCP (20B)
 
-    // Sprawdzamy, czy pakiet ma w ogóle dane poza nagłówkami sieciowymi
-    if (pkthdr->len > network_offset) {
-        // Ustawiamy wskaźnik bezpośrednio na początek nagłówka Modbus TCP (MBAP)
-        const u_char* modbus = packet + network_offset;
+    // Sprawdzamy, czy pakiet ma rozmiar pozwalający na pełne zapytanie z payloadem (54B sieci + 7B MBAP + 1B funkcja + 4B dane = 66 bajtów)
+    if (pkthdr->len >= (network_offset + sizeof(ModbusStandardRequest))) {
+        
+        // Rzutujemy wskaźnik na naszą rozbudowaną strukturę zapytania
+        const ModbusStandardRequest* req = reinterpret_cast<const ModbusStandardRequest*>(packet + network_offset);
 
-        // Składanie bajtów (Big-Endian): przesunięcie bitowe o 8 pozycji w lewo i suma logiczna OR (|)
-        unsigned short transaction_id = (modbus[0] << 8) | modbus[1];
-        unsigned short protocol_id    = (modbus[2] << 8) | modbus[3];
-        unsigned short length         = (modbus[4] << 8) | modbus[5];
-        unsigned char unit_id         = modbus[6]; // 7. bajt nagłówka MBAP
+        // Konwersja z formatu sieciowego (Big-Endian) na format procesora
+        uint16_t trans_id  = ntohs(req->mbap.transaction_id);
+        uint8_t  unit_id   = req->mbap.unit_id;
+        uint8_t  func_code = req->function_code;
+        uint16_t address   = ntohs(req->address);
+        uint16_t val_qty   = ntohs(req->value_or_qty);
 
-        std::cout << "[IDS] Analiza nagłówka Modbus TCP (MBAP):" << std::endl;
-        std::cout << "      Transaction ID: " << transaction_id << std::endl;
-        std::cout << "      Protocol ID:    " << protocol_id << " (0 = Modbus TCP)" << std::endl;
-        std::cout << "      Długość reszty: " << length << " bajtów" << std::endl;
-        std::cout << "      Unit ID:        " << (int)unit_id << std::endl;
-        std::cout << "-----------------------------------------------" << std::endl;
+        std::cout << "[IDS - DEEP PACKET INSPECTION]" << std::endl;
+        std::cout << "      [MBAP] Transakcja: " << trans_id << " | Unit ID: " << (int)unit_id << std::endl;
+
+        // --- REGULA 1: Weryfikacja Unit ID (Skanowanie sieci / Fałszywe zapytania) ---
+        if (unit_id != ALLOWED_UNIT_ID) {
+            if (logger != nullptr) {
+                logger->logAlert("CRITICAL",
+                                 "Wykryto zapytanie do nieautoryzowanego Unit ID. Możliwy atak Reconnaissance!",
+                                 trans_id,
+                                 unit_id);
+            }
+            std::cout << "      [KRYTYCZNY ALARM] Wykryto zapytanie do nieautoryzowanego Unit ID: " 
+                      << (int)unit_id << "! Możliwy atak Reconnaissance!" << std::endl;
+        }
+
+        // --- REGULA 2: Głęboka analiza kodu funkcji i payloadu ---
+        switch (func_code) {
+            case 0x01:
+                std::cout << "      [INFO] Odczyt cewek (Coils). Adres startowy: " << address 
+                          << ", Ilość: " << val_qty << std::endl;
+                break;
+            case 0x03:
+                std::cout << "      [INFO] Odczyt rejestrów (Holding Registers). Adres startowy: " << address 
+                          << ", Ilość: " << val_qty << std::endl;
+                break;
+            case 0x05:
+                if (logger != nullptr) {
+                    logger->logAlert("ALARM",
+                                     "Próba zapisu cewki.",
+                                     trans_id,
+                                     unit_id);
+                }
+                std::cout << "      [ALARM] Próba zapisu cewki! Adres: " << address 
+                          << " | Wartość wymuszana: " << (val_qty == 0xFF00 ? "ON" : "OFF") << std::endl;
+                break;
+            case 0x06:
+                if (logger != nullptr) {
+                    logger->logAlert("CRITICAL",
+                                     "Modyfikacja rejestru sterującego.",
+                                     trans_id,
+                                     unit_id);
+                }
+                std::cout << "      [ALARM KRYTYCZNY] Modyfikacja rejestru sterującego! Adres: " << address 
+                          << " | Zapisywana wartość: " << val_qty << std::endl;
+                break;
+            default:
+                std::cout << "      [OSTRZEŻENIE] Nietypowy kod funkcji: 0x" << std::hex << (int)func_code << std::dec << std::endl;
+                break;
+        }
+        std::cout << "-----------------------------------------------------" << std::endl;
     }
 }
 
@@ -33,9 +84,8 @@ int main() {
     char errbuf[PCAP_ERRBUF_SIZE];
     pcap_if_t *alldevs;
 
-    // Pobranie listy dostępnych kart sieciowych
     if (pcap_findalldevs(&alldevs, errbuf) == -1) {
-        std::cerr << "Błąd findalldevs: " << errbuf << std::endl;
+        std::cerr << "Blad findalldevs: " << errbuf << std::endl;
         return 1;
     }
 
@@ -46,48 +96,37 @@ int main() {
         devs.push_back(d);
     }
 
-    std::cout << "\nWybierz kartę sieciową: ";
+    std::cout << "\nWybierz karte sieciowa: ";
     int choice;
     std::cin >> choice;
 
     if (choice < 1 || choice > i) {
-        std::cout << "Nieprawidłowy wybór." << std::endl;
+        std::cout << "Nieprawidlowy wybor." << std::endl;
         pcap_freealldevs(alldevs);
         return 1;
     }
 
-    // Otwarcie wybranej karty w trybie promiscuous (uchwyt 'handle')
     pcap_t *handle = pcap_open_live(devs[choice - 1]->name, 65535, 1, 1000, errbuf);
     if (handle == nullptr) {
-        std::cerr << "Nie udało się otworzyć karty: " << errbuf << std::endl;
+        std::cerr << "Nie udalo sie otworzyc karty: " << errbuf << std::endl;
         pcap_freealldevs(alldevs);
         return 1;
     }
 
-    // Kompilacja i nakładanie filtra BPF na port 502
     struct bpf_program fp;
     char filter_exp[] = "tcp port 502";
 
     if (pcap_compile(handle, &fp, filter_exp, 0, PCAP_NETMASK_UNKNOWN) == -1) {
-        std::cerr << "Błąd kompilacji filtra: " << pcap_geterr(handle) << std::endl;
-        pcap_close(handle);
-        pcap_freealldevs(alldevs);
+        std::cerr << "Blad kompilacji filtra: " << pcap_geterr(handle) << std::endl;
         return 1;
     }
+    pcap_setfilter(handle, &fp);
 
-    if (pcap_setfilter(handle, &fp) == -1) {
-        std::cerr << "Błąd nakładania filtra: " << pcap_geterr(handle) << std::endl;
-        pcap_close(handle);
-        pcap_freealldevs(alldevs);
-        return 1;
-    }
+    AlertLogger logger;
 
-    std::cout << "\n[NASŁUCH] Filtr aktywny. Czekam na pakiety Modbus..." << std::endl;
-    
-    // Pętla przechwytywania działająca w nieskończoność
-    pcap_loop(handle, 0, packetHandler, nullptr);
+    std::cout << "\n[IDS DPI ACTIVE] Strażnik analizuje zawartość payloadu..." << std::endl;
+    pcap_loop(handle, 0, packetHandler, reinterpret_cast<u_char*>(&logger));
 
-    // Czyszczenie zasobów po wyjściu z pętli (choć pcap_loop tu działa bez końca)
     pcap_close(handle);
     pcap_freealldevs(alldevs);
     return 0;

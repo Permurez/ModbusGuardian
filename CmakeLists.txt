@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
+set(CMAKE_RC_COMPILER "C:/Program Files (x86)/Windows Kits/10/bin/10.0.22621.0/x64/rc.exe" CACHE FILEPATH "Windows resource compiler" FORCE)
+set(CMAKE_MT "C:/Program Files (x86)/Windows Kits/10/bin/10.0.22621.0/x64/mt.exe" CACHE FILEPATH "Windows manifest tool" FORCE)
 project(ModbusGuardian)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -10,5 +12,20 @@ include_directories(${NPCAP_SDK}/Include)
 link_directories(${NPCAP_SDK}/Lib/x64) 
 
 add_executable(ModbusGuardian src/main.cpp)
+target_sources(ModbusGuardian PRIVATE src/AlertLogger.cpp)
+
+target_link_libraries(ModbusGuardian wpcap Packet)cmake_minimum_required(VERSION 3.10)
+project(ModbusGuardian)
+
+set(CMAKE_CXX_STANDARD 17)
+
+set(NPCAP_SDK "C:/npcap-sdk") 
+
+include_directories(${NPCAP_SDK}/Include)
+
+link_directories(${NPCAP_SDK}/Lib/x64) 
+
+add_executable(ModbusGuardian src/main.cpp)
+target_sources(ModbusGuardian PRIVATE src/AlertLogger.cpp)
 
 target_link_libraries(ModbusGuardian wpcap Packet)
