@@ -18,6 +18,6 @@ target_link_libraries(mbgen PRIVATE mbframe)
 target_compile_options(mbgen PRIVATE -Wall -Wextra -Wpedantic -g)
 
 # Passive sniffer / IDS
-add_executable(modbus-guardian src/main.cpp)
+add_executable(modbus-guardian src/main.cpp src/packet_parser.cpp)
 target_link_libraries(modbus-guardian PRIVATE mbframe pcap)
 target_compile_options(modbus-guardian PRIVATE -Wall -Wextra -Wpedantic -g)
