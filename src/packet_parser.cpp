@@ -1,9 +1,5 @@
 #include "packet_parser.hpp"
-
-// Combines two consecutive bytes into one big-endian 16-bit value.
-static uint16_t read_u16_be(const uint8_t* bytes) {
-    return static_cast<uint16_t>((bytes[0] << 8) | bytes[1]);
-}
+#include "byte_order.h"
 
 constexpr size_t ETHERNET_HEADER_LEN = 14;
 
@@ -55,10 +51,6 @@ static bool is_not_tcp(const uint8_t* ip) {
 }
 
 
-
-static uint32_t read_u32_be(const uint8_t* bytes) {
-    return (static_cast<uint32_t>(read_u16_be(bytes)) << 16) | read_u16_be(bytes + 2);
-}
 constexpr size_t IP_FRAGMENT_OFFSET = 6;
 constexpr uint16_t IP_FRAGMENT_MASK = 0x1FFF;
 // Returns true if this is a later fragment of a split packet.

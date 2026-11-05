@@ -5,25 +5,45 @@
 #include "mbframe.h"
 #include "packet_parser.hpp"
 
-// Combines two consecutive bytes into one big-endian 16-bit value.
-static uint16_t read_be16(const uint8_t* bytes) {
-    return static_cast<uint16_t>((bytes[0] << 8) | bytes[1]);
+
+static const char* function_name(uint8_t code) {
+    switch (code & 0x7F) {
+        case MB_FC_READ_COILS: return "Read Coils";
+        case MB_FC_READ_DISCRETE_INPUTS: return "Read Discrete Inputs";
+        case MB_FC_READ_HOLDING_REGS: return "Read Holding Registers";
+        case MB_FC_READ_INPUT_REGS: return "Read Input Registers";
+        case MB_FC_WRITE_SINGLE_COIL: return "Write Single Coil";
+        case MB_FC_WRITE_SINGLE_REG: return "Write Single Register";
+        case MB_FC_WRITE_MULTIPLE_COILS: return "Write Multiple Coils";
+        case MB_FC_WRITE_MULTIPLE_REGS: return "Write Multiple Registers";
+        default: return "Unknown";
+    }
+}
+static void print_frame(const MbFrame& frame) {
+    std::cout << "Transaction ID: " << frame.transaction_id
+              << " | Unit ID: " << static_cast<int>(frame.unit_id)
+              << " | Function: " << static_cast<int>(frame.function_code)
+              << " (" << function_name(frame.function_code) << ")"
+              << " | Data bytes: " << frame.data_len << std::endl;
 }
 
-// Prints the MBAP header fields of a Modbus TCP frame.
-static void print_mbap_header(const uint8_t* mbap) {
-    std::cout << "Transaction ID: " << read_be16(mbap)
-              << " | Protocol ID: " << read_be16(mbap + 2)
-              << " | Length: " << read_be16(mbap + 4)
-              << " | Unit ID: " << static_cast<int>(mbap[6]) << std::endl;
+// A single TCP segment can carry several Modbus frames.
+static void print_frames(const uint8_t* payload, size_t payload_len) {
+    size_t offset = 0;
+    while (offset < payload_len) {
+        MbFrame frame;
+        const int size = mb_parse_frame(payload + offset, payload_len - offset, &frame);
+        if (size <= 0) return;
+        print_frame(frame);
+        offset += static_cast<size_t>(size);
+    }
 }
-
 void packetHandler(u_char*, const struct pcap_pkthdr* pkthdr, const u_char* packet) {
     PacketInfo info;
     if (!parse_packet(packet, pkthdr->caplen, info)) return;
-    if (info.payload_len < MBAP_HEADER_LEN) return;
-    print_mbap_header(info.payload);
+    print_frames(info.payload, info.payload_len);
 }
+
 // Opens a capture source (live interface or pcap file) based on the provided options.
 static pcap_t* open_capture(const CliOptions& options, char* errbuf) {
     if (!options.pcap_path.empty()) return pcap_open_offline(options.pcap_path.c_str(), errbuf);

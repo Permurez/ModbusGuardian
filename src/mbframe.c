@@ -1,4 +1,5 @@
 #include "mbframe.h"
+#include "byte_order.h"
 #define MB_READ_REQ_LEN (MBAP_HEADER_LEN+5)
 
 
@@ -47,4 +48,31 @@ int mb_build_read_coils(uint8_t *buf, size_t buflen, uint16_t tid, uint8_t uid, 
     buf[10] = (uint8_t)(qty >> 8);
     buf[11] = (uint8_t)(qty & 0xff);
     return (MB_READ_REQ_LEN);
+}
+
+static size_t frame_size(uint16_t length_field) {
+    return 6u + length_field;
+}
+
+static int is_invalid_length(uint16_t length_field) {
+    return length_field < MB_MIN_LENGTH_FIELD || length_field > MB_MAX_LENGTH_FIELD;
+}
+
+static void fill_frame(const uint8_t *buf, uint16_t length_field, MbFrame *out) {
+    out->transaction_id = read_u16_be(buf);
+    out->protocol_id = read_u16_be(buf + 2);
+    out->length = length_field;
+    out->unit_id = buf[6];
+    out->function_code = buf[7];
+    out->data =  buf + 8;
+    out->data_len = length_field - 2u;
+}
+
+int mb_parse_frame(const uint8_t *buf, size_t len, MbFrame *out) {
+    if (buf == NULL || out == NULL || len < 6) return MB_FRAME_INCOMPLETE;
+    const uint16_t length_field = read_u16_be(buf + 4);
+    if (is_invalid_length(length_field)) return MB_FRAME_INVALID_LENGTH;
+    if (len < frame_size(length_field)) return MB_FRAME_INCOMPLETE;
+    fill_frame(buf, length_field, out);
+    return (int)frame_size(length_field);
 }
