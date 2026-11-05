@@ -14,4 +14,6 @@ struct PacketInfo {
     size_t payload_len;
 };
 
+// Parses a captured packet and fills the provided PacketInfo structure.
+// Returns true if the packet was successfully parsed, false otherwise.
 bool parse_packet(const uint8_t* data, size_t caplen, PacketInfo& out);
