@@ -9,7 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Shared frame codec: pure C, no I/O
 add_library(mbframe STATIC src/mbframe.c)
-target_include_directories(mbframe PUBLIC include) 
+target_include_directories(mbframe PUBLIC include)
 target_compile_options(mbframe PRIVATE -Wall -Wextra -Wpedantic -g)
 
 # Traffic generator / Modbus TCP client
@@ -18,6 +18,6 @@ target_link_libraries(mbgen PRIVATE mbframe)
 target_compile_options(mbgen PRIVATE -Wall -Wextra -Wpedantic -g)
 
 # Passive sniffer / IDS
-add_executable(modbus-guardian src/main.cpp src/packet_parser.cpp)
+add_executable(modbus-guardian src/main.cpp src/packet_parser.cpp src/cli_options.cpp)
 target_link_libraries(modbus-guardian PRIVATE mbframe pcap)
 target_compile_options(modbus-guardian PRIVATE -Wall -Wextra -Wpedantic -g)
