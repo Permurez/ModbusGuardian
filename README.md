@@ -1,18 +1,16 @@
 # ModbusGuardian
-Lekki system IDS monitorujący ruch Modbus TCP
+A lightweight intrusion detection system for Modbus TCP traffic.
 
 ## Targets
 
-- **modbus-guardian** (`src/main.cpp`) — passive Modbus TCP sniffer / IDS built on
-  libpcap. Captures traffic on a chosen network interface, filters on TCP port 502,
-  and parses the Modbus TCP MBAP header of each packet.
-- **mbgen** (`src/mbgen.c`) — Modbus TCP traffic generator / client used for testing.
-  Builds a Modbus request frame using the `mbframe` library, sends it over a TCP
-  socket to a target server, and prints the response. Currently scaffolded with
-  TODOs — the frame encoding/decoding logic and socket I/O are not yet implemented.
-- **mbframe** (`src/mbframe.c`, `include/mbframe.h`) — shared, I/O-free static
-  library for building and parsing Modbus TCP ADUs, used by both `mbgen` and
-  future tooling.
+- **modbus-guardian** (`src/main.cpp`, `src/packet_parser.cpp`) — passive Modbus TCP
+  sniffer built on libpcap. Locates the Modbus data by reading the IP and TCP header
+  lengths, and checks every read against the captured length. It currently reads
+  `docs/modbus-baseline.pcapng`; command-line options and detection rules are in progress.
+- **mbgen** (`src/mbgen.c`) — Modbus TCP test client. Builds requests with the `mbframe`
+  library, sends them to a server, and prints the responses as hex.
+- **mbframe** (`src/mbframe.c`, `include/mbframe.h`) — shared, I/O-free static library
+  for building and parsing Modbus TCP frames.
 
 ## Building
 
