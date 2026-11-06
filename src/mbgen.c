@@ -7,6 +7,7 @@
 #include <netinet/in.h>
 #include <errno.h>
 #include "mbframe.h"
+#include "byte_order.h"
 //Read exactly 'need' bytes from fd into fub, looping until complete.
 //TCP is a byte stream so single recv() may return partial frame.
 
@@ -76,10 +77,10 @@ int main(void) {
         return 1;
     }
 
-    uint16_t len = (uint16_t)(((uint16_t)resp[4] << 8) | resp[5]);
+    uint16_t len = read_u16_be(resp + 4);
 
     /* Length comes from the wire — never trust it */
-    if (len < 2 || len > MB_MAX_PDU) {
+    if (len < MB_MIN_LENGTH_FIELD || len > MB_MAX_LENGTH_FIELD) {
         fprintf(stderr, "invalid MBAP length: %u\n", len);
         close(fd);
         return 1;
@@ -117,9 +118,9 @@ int main(void) {
         return 1;
     }
 
-    len = (uint16_t)(((uint16_t)resp[4] << 8) | resp[5]);
+    len = read_u16_be(resp + 4);
 
-    if (len < 2 || len > MB_MAX_PDU) {
+    if (len < MB_MIN_LENGTH_FIELD || len > MB_MAX_LENGTH_FIELD) {
         fprintf(stderr, "invalid MBAP length: %u\n", len);
         close(fd);
         return 1;
