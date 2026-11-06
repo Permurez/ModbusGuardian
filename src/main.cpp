@@ -66,16 +66,24 @@ static bool prepare_capture(pcap_t* handle, int port) {
     if (!is_ethernet(handle)) return false;
     return apply_port_filter(handle, port);
 }
-// Runs the packet capture loop, invoking the packetHandler for each captured packet.
+// Runs the capture loop; returns false and prints the reason on failure.
+static bool capture_packets(pcap_t* handle, int port) {
+    if (!prepare_capture(handle, port)) {
+        std::cerr << "Unsupported link type or invalid filter" << std::endl;
+        return false;
+    }
+    if (pcap_loop(handle, 0, packetHandler, nullptr) != PCAP_ERROR) return true;
+    std::cerr << "Capture failed: " << pcap_geterr(handle) << std::endl;
+    return false;
+}
+
 static int run_capture(const CliOptions& options) {
     char errbuf[PCAP_ERRBUF_SIZE];
     pcap_t* handle = open_capture(options, errbuf);
     if (handle == nullptr) { std::cerr << errbuf << std::endl; return 1; }
-    const bool ready = prepare_capture(handle, options.port);
-    if (ready) pcap_loop(handle, 0, packetHandler, nullptr);
-    else std::cerr << "Unsupported link type or invalid filter" << std::endl;
+    const bool succeeded = capture_packets(handle, options.port);
     pcap_close(handle);
-    return ready ? 0 : 1;
+    return succeeded ? 0 : 1;
 }
 
 int main(int argc, char* argv[]) {
