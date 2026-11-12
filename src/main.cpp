@@ -26,33 +26,55 @@ static bool is_request(const PacketInfo& info, int server_port) {
     return info.dst_port == server_port;
 }
  
-// Checks if frame has at least 4 bytes of data and is not an error response.
-static bool has_address_and_quantity(const MbFrame& frame) {
-    return frame.data_len >= 4 && (frame.function_code & MB_FC_ERROR_BIT) == 0;
+// The function code says how the data bytes are laid out. Only these requests put a 2-byte start address first, followed by a 2-byte quantity or value. Error responses (code + 0x80) are not on the list, so they are rejected too.
+static bool request_starts_with_address(uint8_t code) {
+    switch (code) {
+        case MB_FC_READ_COILS:
+        case MB_FC_READ_DISCRETE_INPUTS:
+        case MB_FC_READ_HOLDING_REGS:
+        case MB_FC_READ_INPUT_REGS:
+        case MB_FC_WRITE_SINGLE_COIL:
+        case MB_FC_WRITE_SINGLE_REG:
+        case MB_FC_WRITE_MULTIPLE_COILS:
+        case MB_FC_WRITE_MULTIPLE_REGS:
+            return true;
+        default:
+            return false;
+    }
 }
  
-static void print_frame(const MbFrame& frame) {
+// Checks that the address and quantity can be read safely:
+// the frame type has them, and the frame is long enough to hold them.
+static bool has_request_fields(const MbFrame& frame) {
+    return request_starts_with_address(frame.function_code) && frame.data_len >= 4;
+}
+ 
+// Prints the start address (bytes 0-1) and the quantity or written value (bytes 2-3).
+static void print_request_fields(const MbFrame& frame) {
+    std::cout << " | Address: " << read_u16_be(frame.data)
+              << " | Quantity/Value: " << read_u16_be(frame.data + 2);
+}
+ 
+// Responses reuse the request's function code, but their data bytes mean
+// something else, so the address is printed only for requests.
+static void print_frame(const MbFrame& frame, bool is_request_frame) {
     std::cout << "Transaction ID: " << frame.transaction_id
               << " | Unit ID: " << static_cast<int>(frame.unit_id)
               << " | Function: " << static_cast<int>(frame.function_code)
               << " (" << function_name(frame.function_code) << ")"
-              << " | Data bytes: " << frame.data_len << std::endl;
-}
- 
-// Prints the start address and the quantity (or written value) of a request.
-static void print_request_fields(const MbFrame& frame) {
-    std::cout << "  Starting Address: " << (frame.data[0] << 8 | frame.data[1]);
-    // TODO: print the quantity/value from bytes 2-3
+              << " | Data bytes: " << frame.data_len;
+    if (is_request_frame && has_request_fields(frame)) print_request_fields(frame);
+    std::cout << std::endl;
 }
  
 // A single TCP segment can carry several Modbus frames.
-static void print_frames(const uint8_t* payload, size_t payload_len) {
+static void print_frames(const uint8_t* payload, size_t payload_len, bool is_request_frame) {
     size_t offset = 0;
     while (offset < payload_len) {
         MbFrame frame;
         const int size = mb_parse_frame(payload + offset, payload_len - offset, &frame);
         if (size <= 0) return;
-        print_frame(frame);
+        print_frame(frame, is_request_frame);
         offset += static_cast<size_t>(size);
     }
 }
@@ -62,7 +84,7 @@ void packetHandler(u_char* user_data, const struct pcap_pkthdr* pkthdr, const u_
     if (!parse_packet(packet, pkthdr->caplen, info)) return;
     // user_data points to the server port (int) passed to pcap_loop in capture_packets.
     const int server_port = *reinterpret_cast<const int*>(user_data);
-    print_frames(info.payload, info.payload_len);
+    print_frames(info.payload, info.payload_len, is_request(info, server_port));
 }
  
 // Opens a capture source (live interface or pcap file) based on the provided options.
