@@ -6,9 +6,10 @@
 //encodes an MBAP header + Read Holding Registers (FC 0x03) request into buf.
 int mb_build_read_holding(uint8_t *buf, size_t buflen, uint16_t tid,
                           uint8_t uid, uint16_t addr, uint16_t qty) {
-    const uint16_t pdu_len = 1+1+2+2;
     if (buf==NULL||buflen < MB_READ_REQ_LEN) {return -1;}
-    if (qty < 1 || qty> 125) {return -1;}
+    if (qty < 1 || qty> 125) {return -1;}                           
+    const uint16_t pdu_len = 1+1+2+2;
+
     buf[0] = (uint8_t)(tid>>8);//moved by 8 to right
     buf[1] = (uint8_t)(tid & 0xff); // only 8 bottom bits
     buf[2] = 0;
@@ -75,4 +76,22 @@ int mb_parse_frame(const uint8_t *buf, size_t len, MbFrame *out) {
     if (len < frame_size(length_field)) return MB_FRAME_INCOMPLETE;
     fill_frame(buf, length_field, out);
     return (int)frame_size(length_field);
+}
+int mb_build_write_single_reg(uint8_t *buf, size_t buflen, uint16_t tid,
+                              uint8_t uid, uint16_t addr, uint16_t value){
+    if (buf == NULL || buflen < MB_READ_REQ_LEN) {return -1;}
+    const uint16_t pdu_len = 1+1+2+2;
+    buf[0] = (uint8_t)(tid>>8);//moved by 8 to right
+    buf[1] = (uint8_t)(tid & 0xff); //botom 8 bits
+    buf[2] = 0;
+    buf[3] = 0;
+    buf[4] =(uint8_t)(pdu_len>>8);//length
+    buf[5] =(uint8_t)(pdu_len & 0xff);
+    buf[6] = (uint8_t)(uid);
+    buf[7] = MB_FC_WRITE_SINGLE_REG; //0x06
+    buf[8] = (uint8_t)(addr >> 8);
+    buf[9] =(uint8_t)(addr & 0xff);
+    buf[10] = (uint8_t)(value >> 8);
+    buf[11] = (uint8_t)(value & 0xff);
+    return (MB_READ_REQ_LEN);
 }

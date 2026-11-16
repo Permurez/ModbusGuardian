@@ -65,7 +65,9 @@ typedef struct {
 int mb_build_read_holding(uint8_t *buf, size_t buflen, uint16_t tid,
                            uint8_t uid, uint16_t addr, uint16_t qty);
 int mb_build_read_coils(uint8_t *buf, size_t buflen, uint16_t tid, uint8_t uid, uint16_t addr, uint16_t qty);
-
+/* Build a Write Single Register (FC 06) request; the server echoes it back on success. */
+int mb_build_write_single_reg(uint8_t *buf, size_t buflen, uint16_t tid,
+                              uint8_t uid, uint16_t addr, uint16_t value);
 /**
  * Parse the MBAP header of a Modbus TCP response and extract key fields.
  *
@@ -87,6 +89,7 @@ int mb_parse_response_header(const uint8_t *buf, size_t len,
  *         or MB_FRAME_INVALID_LENGTH if the Length field is out of range.
  */
 int mb_parse_frame(const uint8_t *buf, size_t len, MbFrame *out);
+
 
 #ifdef __cplusplus
 }
