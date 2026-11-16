@@ -1,3 +1,4 @@
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,7 +9,7 @@
 #include <errno.h>
 #include "mbframe.h"
 #include "byte_order.h"
-//Read exactly 'need' bytes from fd into fub, looping until complete.
+//Read exactly 'need' bytes from fd into buf, looping until complete.
 //TCP is a byte stream so single recv() may return partial frame.
 
 static int recv_exact(int fd, uint8_t *buf, size_t need) {
@@ -137,6 +138,46 @@ int main(void) {
         printf("%02X ", resp[i]);
     }
     printf("\n");
+
+    /* Write Single Register (FC 06): set register 5 to 1234. */
+    req_len = mb_build_write_single_reg(req, sizeof(req), 3, 1, 5, 1234);
+    if (req_len < 0) {
+        fprintf(stderr, "mb_build_write_single_reg failed\n");
+        close(fd);
+        return 1;
+    }
+
+    if (send(fd, req, (size_t)req_len, 0) < 0) {
+        perror("send");
+        close(fd);
+        return 1;
+    }
+
+    if (recv_exact(fd, resp, 6) < 0) {
+        close(fd);
+        return 1;
+    }
+
+    len = read_u16_be(resp + 4);
+
+    if (len < MB_MIN_LENGTH_FIELD || len > MB_MAX_LENGTH_FIELD) {
+        fprintf(stderr, "invalid MBAP length: %u\n", len);
+        close(fd);
+        return 1;
+    }
+
+    if (recv_exact(fd, resp + 6, len) < 0) {
+        close(fd);
+        return 1;
+    }
+
+    total = 6 + (size_t)len;
+
+    for (size_t i = 0; i < total; i++) {
+        printf("%02X ", resp[i]);
+    }
+    printf("\n");
+
     /* 7. Close the socket. */
     close(fd);
     return 0;
